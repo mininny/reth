@@ -390,6 +390,27 @@ pub trait TransactionPool: Clone + Debug + Send + Sync {
     /// Consumer: RPC
     fn pending_transactions(&self) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>>;
 
+    /// Returns `true` if the transaction with the given sender and nonce is ready to be executed.
+    ///
+    /// A transaction is "nonce-ready" if it is the next expected transaction for its sender,
+    /// meaning all prior nonces have already been consumed or are not required.
+    ///
+    /// This is useful for external ordering systems (e.g., score-based reordering) that need to
+    /// check whether a transaction can be directly included in a block without violating nonce
+    /// ordering constraints.
+    ///
+    /// The default implementation scans pending transactions to find the lowest nonce for the
+    /// sender and checks if it matches the given nonce.
+    fn is_transaction_ready(&self, sender: &Address, nonce: u64) -> bool {
+        use alloy_consensus::Transaction;
+        self.pending_transactions()
+            .iter()
+            .filter(|tx| tx.sender() == *sender)
+            .map(|tx| tx.transaction.nonce())
+            .min()
+            == Some(nonce)
+    }
+
     /// Returns first `max` transactions that can be included in the next block.
     /// See <https://github.com/paradigmxyz/reth/issues/12767#issuecomment-2493223579>
     ///
@@ -976,6 +997,7 @@ pub trait BestTransactions: Iterator + Send {
     {
         BestTransactionFilter::new(self, predicate)
     }
+
 }
 
 impl<T> BestTransactions for Box<T>
